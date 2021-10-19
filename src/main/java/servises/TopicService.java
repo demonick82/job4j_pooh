@@ -9,26 +9,28 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class TopicService implements Service {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>> queue =
             new ConcurrentHashMap();
-    private static String tmpUser;
 
-    @Override
     public Resp process(Req req) {
         String text = "";
-        String status = req.getSourceName();
-
+        String status = "200";
         if ("POST".equals(req.httpRequestType())) {
-            if (req.getParam().contains("client")) {
-                tmpUser = req.getParam();
-            } else {
-                ConcurrentHashMap<String, ConcurrentLinkedQueue<String>> tmpMap = new ConcurrentHashMap();
-                tmpMap.putIfAbsent(status, new ConcurrentLinkedQueue<>());
-                tmpMap.get(status).add(req.getParam());
-                queue.putIfAbsent(tmpUser, tmpMap);
+            for (ConcurrentHashMap<String, ConcurrentLinkedQueue<String>> m : queue.values()) {
+                for (ConcurrentLinkedQueue<String> q : m.values()) {
+                    q.offer(req.getParam());
+                }
             }
         } else if ("GET".equals(req.httpRequestType())) {
-            ConcurrentHashMap<String, ConcurrentLinkedQueue<String>> tmp = queue.get(req.getParam());
-            if (tmp != null) {
-                text = tmp.get(status).poll();
+            if (queue.get(req.getSourceName()) == null) {
+                ConcurrentHashMap<String, ConcurrentLinkedQueue<String>> map = new ConcurrentHashMap<>();
+                map.putIfAbsent(req.getParam(), new ConcurrentLinkedQueue<>());
+                queue.putIfAbsent(req.getSourceName(), map);
+            } else {
+                queue.get(req.getSourceName())
+                        .putIfAbsent(req.getParam(), new ConcurrentLinkedQueue<>());
+                text = queue.get(req.getSourceName()).get(req.getParam()).poll();
+                if (text == null) {
+                    return new Resp("", "204");
+                }
             }
         }
         return new Resp(text, status);
